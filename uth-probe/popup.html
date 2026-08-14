@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>UTH 探针</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="mast">
+      <img class="brand-avatar" src="brand/misa.png" alt="@misaENFP" />
+      <div>
+        <p class="kicker">For You 检验单</p>
+        <h1>UTH 探针</h1>
+        <p class="sub"><a href="https://x.com/misaENFP" target="_blank" rel="noreferrer">@misaENFP</a> · 安全 · 分数 · 建议</p>
+      </div>
+    </header>
+
+    <section class="composer">
+      <textarea id="text" rows="4" placeholder="粘贴帖子正文，或点下方读取当前页帖子"></textarea>
+      <div class="row">
+        <button type="button" id="read">读取当前页帖子</button>
+        <button type="button" id="run" class="primary">分析</button>
+      </div>
+      <p id="source" class="hint"></p>
+    </section>
+
+    <nav class="tabs">
+      <button type="button" data-tab="safety" class="on">安全</button>
+      <button type="button" data-tab="score">分数</button>
+      <button type="button" data-tab="advice">建议</button>
+    </nav>
+
+    <section id="out" class="out"></section>
+    <script src="shared.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

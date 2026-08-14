@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "UTH 探针",
+  "version": "1.1.0",
+  "description": "对照 X 开源算法：检测帖子标签风险，并用公开互动估算 For You 加权分。",
+  "action": {
+    "default_title": "UTH 探针",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["activeTab"],
+  "host_permissions": [
+    "https://x.com/*",
+    "https://www.x.com/*",
+    "https://twitter.com/*",
+    "https://www.twitter.com/*",
+    "https://pbs.twimg.com/*",
+    "https://abs.twimg.com/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["brand/misa.png"],
+      "matches": [
+        "https://x.com/*",
+        "https://www.x.com/*",
+        "https://twitter.com/*",
+        "https://www.twitter.com/*"
+      ]
+    }
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://www.x.com/*",
+        "https://twitter.com/*",
+        "https://www.twitter.com/*"
+      ],
+      "js": ["shared.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
