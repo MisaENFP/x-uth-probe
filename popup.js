@@ -120,7 +120,10 @@ function bindDownload(tweet, safety, score, advice) {
     btn.textContent = "生成中…";
     try {
       await UTH.downloadPngReport({
-        tweet,
+        tweet: Object.assign({}, tweet, {
+          avatarUrl: "",
+          avatar: String(tweet.avatar || "").startsWith("data:") ? tweet.avatar : "",
+        }),
         safety,
         score,
         advice,
@@ -128,6 +131,7 @@ function bindDownload(tweet, safety, score, advice) {
       });
       btn.textContent = "已下载";
     } catch (e) {
+      console.error("[UTH] download failed", e);
       btn.textContent = "失败，重试";
     }
   });

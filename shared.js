@@ -662,7 +662,7 @@
 
   function loadImg(src) {
     return new Promise((resolve, reject) => {
-      if (!src) {
+      if (!src || !String(src).startsWith("data:")) {
         reject(new Error("no src"));
         return;
       }
@@ -672,6 +672,50 @@
       img.src = src;
     });
   }
+
+  function blobToDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function asDataUrl(src) {
+    if (!src) return "";
+    if (String(src).startsWith("data:")) return src;
+    try {
+      const res = await fetch(src);
+      if (!res.ok) return "";
+      const blob = await res.blob();
+      if (!blob || !blob.size) return "";
+      return await blobToDataUrl(blob);
+    } catch (e) {
+      return "";
+    }
+  }
+
+  async function saveFile(dataUrl, filename) {
+    try {
+      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+        const res = await chrome.runtime.sendMessage({
+          type: "UTH_DOWNLOAD",
+          url: dataUrl,
+          filename: filename,
+        });
+        if (res && res.ok) return;
+      }
+    } catch (e) {}
+    const a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = filename;
+    a.rel = "noopener";
+    document.documentElement.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
 
   function circleImg(ctx, img, x, y, r) {
     ctx.save();
@@ -743,18 +787,18 @@
     ctx.strokeRect(24, 48, w - 48, h - 72);
 
     ctx.fillStyle = "#6b5840";
-    ctx.font = "16px ui-monospace, Menlo, monospace";
+    ctx.font = '16px ui-monospace, Menlo, "PingFang SC", sans-serif';
     ctx.fillText("UTH 探针  ·  FOR YOU 检验单", 56, 92);
 
-    const avatarSrc = tweet.avatar || tweet.avatarUrl || "";
-    const brandSrc = payload.brandUrl || UTH.brandAvatarUrl();
+    const avatarData = await asDataUrl(tweet.avatar || "");
+    const brandData = await asDataUrl(payload.brandUrl || UTH.brandAvatarUrl());
     let avatarImg = null;
     let brandImg = null;
     try {
-      avatarImg = await loadImg(avatarSrc);
+      avatarImg = await loadImg(avatarData);
     } catch (e) {}
     try {
-      brandImg = await loadImg(brandSrc);
+      brandImg = await loadImg(brandData);
     } catch (e) {}
 
     const ax = 110;
@@ -767,19 +811,19 @@
       ctx.fillStyle = "#1a140c";
       ctx.fill();
       ctx.fillStyle = "#f3ead6";
-      ctx.font = "36px Charter, serif";
+      ctx.font = '36px "PingFang SC", Charter, serif';
       ctx.textAlign = "center";
       ctx.fillText((tweet.handle || "?").slice(0, 1).toUpperCase(), ax, ay + 12);
       ctx.textAlign = "left";
     }
 
     ctx.fillStyle = "#1a140c";
-    ctx.font = "700 34px Charter, Songti SC, serif";
-    ctx.fillText(tweet.display || tweet.handle || "未知作者", 180, 158);
-    ctx.font = "22px ui-monospace, Menlo, monospace";
+    ctx.font = '700 34px "PingFang SC", Charter, serif';
+    ctx.fillText(String(tweet.display || tweet.handle || "未知作者").slice(0, 18), 180, 158);
+    ctx.font = '22px ui-monospace, Menlo, "PingFang SC", sans-serif';
     ctx.fillText("@" + (tweet.handle || "unknown"), 180, 192);
     ctx.fillStyle = "#6b5840";
-    ctx.font = "16px ui-monospace, Menlo, monospace";
+    ctx.font = '16px ui-monospace, Menlo, "PingFang SC", sans-serif';
     ctx.fillText("NO." + (tweet.id || "MANUAL"), 180, 218);
 
     const stamp = UTH.stampOf(safety.status);
@@ -792,26 +836,26 @@
     ctx.lineWidth = 4;
     ctx.strokeRect(-70, -28, 140, 56);
     ctx.fillStyle = stampColor;
-    ctx.font = "700 22px ui-monospace, Menlo, monospace";
+    ctx.font = '700 22px ui-monospace, Menlo, sans-serif';
     ctx.textAlign = "center";
     ctx.fillText(stamp, 0, 8);
     ctx.textAlign = "left";
     ctx.restore();
 
     ctx.fillStyle = "#1a140c";
-    ctx.font = "20px Charter, Songti SC, serif";
+    ctx.font = '20px "PingFang SC", Charter, serif';
     wrapText(ctx, tweet.text || "（无文本）", 56, 270, w - 112, 30, 4);
 
-    ctx.font = "16px ui-monospace, Menlo, monospace";
+    ctx.font = '16px ui-monospace, Menlo, "PingFang SC", sans-serif';
     ctx.fillStyle = "#6b5840";
     ctx.fillText("估算分  Σ w × P", 56, 420);
     ctx.fillStyle = "#1a140c";
-    ctx.font = "700 72px ui-monospace, Menlo, monospace";
+    ctx.font = '700 72px ui-monospace, Menlo, sans-serif';
     const total = score && Number.isFinite(score.total) ? score.total : 0;
     const abs = Math.abs(total);
     const scoreText = (total < 0 ? "−" : "") + (abs >= 1 ? abs.toFixed(2) : abs.toFixed(4));
     ctx.fillText(scoreText, 56, 490);
-    ctx.font = "16px ui-monospace, Menlo, monospace";
+    ctx.font = '16px ui-monospace, Menlo, "PingFang SC", sans-serif';
     ctx.fillStyle = "#6b5840";
     ctx.fillText(
       "浏览 " +
@@ -827,35 +871,37 @@
     );
 
     ctx.fillStyle = "#1a140c";
-    ctx.font = "700 22px Charter, Songti SC, serif";
+    ctx.font = '700 22px "PingFang SC", Charter, serif';
     ctx.fillText("建议", 56, 580);
     let y = 616;
-    ctx.font = "18px Charter, Songti SC, serif";
     for (const tip of advice.slice(0, 4)) {
       ctx.fillStyle = tip.level === "alert" ? "#a31b12" : tip.level === "good" ? "#1f7a38" : "#1a140c";
-      ctx.font = "700 18px Charter, Songti SC, serif";
+      ctx.font = '700 18px "PingFang SC", Charter, serif';
       ctx.fillText("· " + tip.title, 56, y);
       y += 28;
       ctx.fillStyle = "#4d3f2e";
-      ctx.font = "16px Charter, Songti SC, serif";
+      ctx.font = '16px "PingFang SC", Charter, serif';
       y = wrapText(ctx, tip.body, 76, y, w - 140, 24, 3) + 12;
     }
 
     if (brandImg) circleImg(ctx, brandImg, 88, h - 88, 26);
     ctx.fillStyle = "#1a140c";
-    ctx.font = "700 18px Charter, Songti SC, serif";
+    ctx.font = '700 18px "PingFang SC", Charter, serif';
     ctx.fillText("@" + UTH.BRAND.handle, 128, h - 96);
     ctx.fillStyle = "#6b5840";
-    ctx.font = "14px ui-monospace, Menlo, monospace";
+    ctx.font = '14px ui-monospace, Menlo, sans-serif';
     ctx.fillText(UTH.BRAND.url.replace("https://", ""), 128, h - 74);
 
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-    if (!blob) throw new Error("无法生成图片");
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "uth-" + (tweet.handle || "report") + "-" + (tweet.id || "draft") + ".png";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    const blob = await new Promise((resolve, reject) => {
+      try {
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob empty"))), "image/png");
+      } catch (e) {
+        reject(e);
+      }
+    });
+    const dataUrl = await blobToDataUrl(blob);
+    const filename = "uth-" + (tweet.handle || "report") + "-" + (tweet.id || "draft") + ".png";
+    await saveFile(dataUrl, filename);
   };
 
   function tNum(n) {

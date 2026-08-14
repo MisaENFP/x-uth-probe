@@ -182,17 +182,21 @@
   }
 
   async function fetchDataUrl(src) {
-    if (!src || src.startsWith("data:")) return src || "";
+    if (!src) return "";
+    if (src.startsWith("data:")) return src;
     try {
-      const res = await fetch(src, { credentials: "include" });
+      const res = await fetch(src, { credentials: "omit" });
+      if (!res.ok) return "";
       const blob = await res.blob();
-      return await new Promise((resolve) => {
+      if (!blob || !blob.size) return "";
+      return await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
         reader.readAsDataURL(blob);
       });
     } catch (e) {
-      return src;
+      return "";
     }
   }
 
@@ -213,7 +217,7 @@
     renderPanel();
     if (tweet.avatarUrl && !tweet.avatar) {
       fetchDataUrl(tweet.avatarUrl).then((data) => {
-        if (currentTweet && currentTweet.id === tweet.id) {
+        if (data && String(data).startsWith("data:") && currentTweet && currentTweet.id === tweet.id) {
           currentTweet.avatar = data;
           renderPanel();
         }
@@ -381,7 +385,10 @@
         dl.textContent = "生成中…";
         try {
           await UTH.downloadPngReport({
-            tweet,
+            tweet: Object.assign({}, tweet, {
+              avatarUrl: "",
+              avatar: String(tweet.avatar || "").startsWith("data:") ? tweet.avatar : "",
+            }),
             safety,
             score,
             advice,
@@ -389,6 +396,7 @@
           });
           dl.textContent = "已下载";
         } catch (e) {
+          console.error("[UTH] download failed", e);
           dl.textContent = "失败，重试";
         }
       });
