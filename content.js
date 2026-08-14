@@ -9,6 +9,44 @@
   let currentTweet = null;
   let activeTab = "safety";
   let opts = { mutualOriginal: false, oon: false };
+  const aiCache = new Map();
+
+  function aiKeyOf(tweet) {
+    return tweet.id || "manual:" + String(tweet.text || "").slice(0, 100);
+  }
+
+  function requestAi(tweet) {
+    if (!tweet || !String(tweet.text || "").trim()) return;
+    const key = aiKeyOf(tweet);
+    const entry = aiCache.get(key);
+    if (entry && entry.status !== "off") return;
+    aiCache.set(key, { status: "loading" });
+    chrome.runtime.sendMessage(
+      {
+        type: "UTH_AI_ANALYZE",
+        tweet: {
+          text: tweet.text,
+          urls: tweet.urls,
+          hasPhoto: tweet.hasPhoto,
+          hasVideo: tweet.hasVideo,
+          hasGif: tweet.hasGif,
+          hasCard: tweet.hasCard,
+        },
+      },
+      (res) => {
+        if (chrome.runtime.lastError) {
+          aiCache.set(key, { status: "error", error: chrome.runtime.lastError.message });
+        } else if (res && res.ok) {
+          aiCache.set(key, { status: "done", ai: res.ai, model: res.model });
+        } else if (res && res.off) {
+          aiCache.set(key, { status: "off" });
+        } else {
+          aiCache.set(key, { status: "error", error: (res && res.error) || "未知错误" });
+        }
+        renderPanel();
+      }
+    );
+  }
 
   function $(sel, root) {
     return (root || document).querySelector(sel);
@@ -215,6 +253,7 @@
     const sheet = shadow.querySelector(".sheet");
     sheet.hidden = false;
     renderPanel();
+    requestAi(tweet);
     if (tweet.avatarUrl && !tweet.avatar) {
       fetchDataUrl(tweet.avatarUrl).then((data) => {
         if (data && String(data).startsWith("data:") && currentTweet && currentTweet.id === tweet.id) {
@@ -229,7 +268,9 @@
     const tweet = currentTweet;
     if (!tweet || !panelHost) return;
     const sheet = panelHost.shadowRoot.querySelector(".sheet");
-    const safety = UTH.analyzeSafety(tweet);
+    const aiEntry = aiCache.get(aiKeyOf(tweet));
+    const aiDone = aiEntry && aiEntry.status === "done";
+    const safety = UTH.mergeSafety(UTH.analyzeSafety(tweet), aiDone ? aiEntry.ai : null);
     const score = UTH.estimateScore(tweet, opts);
     const age = UTH.hoursAgo(tweet.createdAt);
     const agedOut = age != null && age > UTH.MAX_AGE_HOURS;
@@ -247,17 +288,33 @@
           ? `<div class="stamp stamp-alert">HOLD</div>`
           : `<div class="stamp stamp-warn">FLAG</div>`;
 
+    const aiRow = !aiEntry || aiEntry.status === "off"
+      ? `<p class="ai-row">AI 复核未启用 · <a href="#" class="ai-settings">绑定 DeepSeek API</a></p>`
+      : aiEntry.status === "loading"
+        ? `<p class="ai-row">DeepSeek 语义复核中…</p>`
+        : aiEntry.status === "error"
+          ? `<p class="ai-row err">AI 复核失败：${esc(aiEntry.error || "")} · <a href="#" class="ai-retry">重试</a></p>`
+          : `<p class="ai-row ok">DeepSeek 复核完成${safety.aiNote ? "：" + esc(safety.aiNote) : ""}</p>`;
+
+    const srcPill = (m) =>
+      m.src === "ai" ? `<span class="pill src-ai">AI</span>` : m.src === "both" ? `<span class="pill src-ai">规则+AI</span>` : "";
+
     const safetyBody =
       safety.status === "clear"
         ? `<div class="clear-block">
-             <p class="clear-kicker">未命中 UTH 公开标签规则</p>
-             <p class="muted">按帖子文本、链接、媒体做启发式对照。这不是 X 后台的真实标签，绿色只表示「公开规则没扫到明显信号」。</p>
+             <p class="clear-kicker">${aiDone ? "规则与 AI 复核均未命中" : "未命中 UTH 公开标签规则"}</p>
+             <p class="muted">${
+               aiDone
+                 ? "本地规则和 DeepSeek 语义判定都没扫到明显信号。这不是 X 后台的真实标签，仅供参考。"
+                 : "按帖子文本、链接、媒体做启发式对照。这不是 X 后台的真实标签，绿色只表示「公开规则没扫到明显信号」。"
+             }</p>
            </div>`
         : safety.matches
             .map(
               (m) => `<article class="label-card ${m.level}">
                 <header>
                   <span class="pill">${m.kill === "all" ? "整站" : "非粉 For You"}</span>
+                  ${srcPill(m)}
                   <code>${esc(m.id)}</code>
                 </header>
                 <p class="reason">${esc(m.reason)}</p>
@@ -321,6 +378,7 @@
                ${miniStat("链接", String(tweet.urls.length))}
                ${miniStat("@", String(safety.signals.mentions))}
                ${miniStat("垃圾分", String(safety.signals.spamScore))}</div>
+               ${aiRow}
                ${safetyBody}`
             : activeTab === "advice"
               ? adviceBody
@@ -360,6 +418,22 @@
     `;
 
     sheet.querySelector(".close").addEventListener("click", closePanel);
+    const aiSettings = sheet.querySelector(".ai-settings");
+    if (aiSettings) {
+      aiSettings.addEventListener("click", (e) => {
+        e.preventDefault();
+        chrome.runtime.sendMessage({ type: "UTH_OPEN_OPTIONS" });
+      });
+    }
+    const aiRetry = sheet.querySelector(".ai-retry");
+    if (aiRetry) {
+      aiRetry.addEventListener("click", (e) => {
+        e.preventDefault();
+        aiCache.delete(aiKeyOf(tweet));
+        requestAi(tweet);
+        renderPanel();
+      });
+    }
     sheet.querySelectorAll("[data-tab]").forEach((btn) => {
       btn.addEventListener("click", () => {
         activeTab = btn.getAttribute("data-tab");
@@ -600,6 +674,11 @@
     table.grid .dim td { color: #9a8a72; }
     .pos { color: #1f7a38; }
     .neg { color: #a31b12; }
+    .ai-row { margin: 0 0 10px; font-size: 12px; color: #6b5840; }
+    .ai-row.ok { color: #1f7a38; }
+    .ai-row.err { color: #a31b12; }
+    .ai-row a { color: inherit; font-weight: 700; }
+    .pill.src-ai { background: #1a140c; color: #f3ead6; border-color: #1a140c; }
   `;
 
   const btnStyle = document.createElement("style");

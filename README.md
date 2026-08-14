@@ -67,3 +67,19 @@ P(行为) = 该行为次数 / 浏览量   （没有浏览量则 P = 0）
 NSFW 族、血腥、Spam / SpamHighRecall、恶意链接 / DoNotAmplify、FOSNR（辱骂、仇恨、暴力言论、公民诚信）、自残鼓励 → Bounce。
 
 账号级标签（头像 NSFW、整号 SpamHighRecall 等）插件看不到，请用官方 [Under the Hood](https://x.com/i/under_the_hood)。
+
+---
+
+## AI 复核（可选，DeepSeek）
+
+本地规则是关键词启发式，识别不了讽刺、谐音、变体词。绑定自己的 DeepSeek API Key 后，安全页会在规则之外加一层语义复核：
+
+1. 右键扩展图标 → **选项**（或 popup 右上角 **AI** 按钮）打开设置页
+2. 填入 [platform.deepseek.com](https://platform.deepseek.com) 创建的 API Key，勾选启用，保存
+3. 再分析帖子时，安全页先秒出规则结果，随后显示「DeepSeek 复核完成」，AI 补充的标签会带 **AI** 角标
+
+说明：
+
+- Key 只存浏览器本地（`chrome.storage.local`），不会上传
+- 启用后，被分析帖子的**文本和链接**会发送到 api.deepseek.com；关掉开关即回到纯本地模式
+- 默认模型 `deepseek-v4-flash`（可切 `deepseek-v4-pro`）；旧的 `deepseek-chat` / `deepseek-reasoner` 已于 2026-07 停用，插件会自动迁移旧配置。AI 判定同样只是估计，不代表 X 官方结论

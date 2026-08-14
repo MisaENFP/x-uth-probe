@@ -907,4 +907,103 @@
   function tNum(n) {
     return (Number(n) || 0).toLocaleString("zh-CN");
   }
+
+  // ===== AI 复核（DeepSeek，可选）=====
+
+  UTH.buildAiMessages = function buildAiMessages(tweet) {
+    const t = tweet || {};
+    const taxonomy = Object.keys(UTH.LABELS)
+      .map((id) => "- " + id + "：" + UTH.LABELS[id].about)
+      .join("\n");
+    const sys =
+      "你是 X（Twitter）内容安全标签分类器，对照下列标签体系判断一条帖子可能被打上哪些标签。\n" +
+      "标签体系：\n" +
+      taxonomy +
+      "\n只输出 JSON，不要输出其他内容，格式：" +
+      '{"status":"clear|warn|alert","labels":[{"id":"标签ID","level":"warn|alert","reason":"一句话中文理由","evidence":["帖子原文中的关键片段"]}],"note":"不超过60字的中文总结"}\n' +
+      "判定要求：\n" +
+      "1. 理解语义和语境：讽刺、谐音、变体词、隐喻都要识别；\n" +
+      "2. 正常讨论敏感话题（新闻、科普、表达反对立场）不算违规；\n" +
+      "3. 没有把握就不要打标，宁缺勿滥；\n" +
+      "4. 无风险时 labels 为空数组，status 为 clear；\n" +
+      "5. level 用 alert 表示可能整站不可见或被限制在主页，warn 表示可能对非粉隐藏。";
+    const user = JSON.stringify({
+      text: String(t.text || "").slice(0, 2000),
+      urls: (Array.isArray(t.urls) ? t.urls : []).slice(0, 8),
+      has_media: Boolean(t.hasPhoto || t.hasVideo || t.hasGif),
+      has_link_card: Boolean(t.hasCard),
+    });
+    return [
+      { role: "system", content: sys },
+      { role: "user", content: user },
+    ];
+  };
+
+  UTH.sanitizeAiResult = function sanitizeAiResult(raw) {
+    const out = { status: "clear", labels: [], note: "" };
+    if (!raw || typeof raw !== "object") return out;
+    out.note = String(raw.note || "").slice(0, 200);
+    const seen = new Set();
+    const list = Array.isArray(raw.labels) ? raw.labels : [];
+    for (const l of list) {
+      if (!l || typeof l !== "object") continue;
+      const id = String(l.id || "").toUpperCase().trim();
+      if (!UTH.LABELS[id] || seen.has(id)) continue;
+      seen.add(id);
+      out.labels.push({
+        id,
+        level: l.level === "alert" ? "alert" : "warn",
+        reason: String(l.reason || "").slice(0, 120),
+        evidence: (Array.isArray(l.evidence) ? l.evidence : [])
+          .map((e) => String(e).slice(0, 60))
+          .slice(0, 4),
+      });
+    }
+    out.status = out.labels.some((l) => l.level === "alert")
+      ? "alert"
+      : out.labels.length
+        ? "warn"
+        : "clear";
+    return out;
+  };
+
+  UTH.mergeSafety = function mergeSafety(rule, ai) {
+    const r = rule || { status: "clear", matches: [], signals: {} };
+    const out = {
+      status: r.status,
+      matches: (r.matches || []).map((m) => Object.assign({ src: "rule" }, m)),
+      signals: r.signals || {},
+      aiNote: "",
+      aiRan: Boolean(ai),
+    };
+    if (!ai) return out;
+    out.aiNote = ai.note || "";
+    for (const l of ai.labels || []) {
+      const meta = UTH.LABELS[l.id];
+      if (!meta) continue;
+      const existing = out.matches.find((m) => m.id === l.id);
+      if (existing) {
+        existing.src = "both";
+        if (l.level === "alert") existing.level = "alert";
+        if (l.reason && !existing.reason) existing.reason = l.reason;
+      } else {
+        out.matches.push({
+          id: l.id,
+          level: l.level,
+          reason: l.reason || meta.about,
+          evidence: (l.evidence || []).slice(0, 4),
+          about: meta.about,
+          effect: meta.effect,
+          kill: meta.kill,
+          src: "ai",
+        });
+      }
+    }
+    out.status = out.matches.some((m) => m.level === "alert")
+      ? "alert"
+      : out.matches.length
+        ? "warn"
+        : "clear";
+    return out;
+  };
 })(typeof globalThis !== "undefined" ? globalThis : window);

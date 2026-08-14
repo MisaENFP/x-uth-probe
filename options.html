@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>UTH 探针 · AI 复核设置</title>
+    <style>
+      :root {
+        --ink: #1a140c;
+        --paper: #f3ead6;
+        --paper-2: #fff8ea;
+        --muted: #6b5840;
+        --green: #1f7a38;
+        --red: #a31b12;
+        --line: #2a2116;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; }
+      body {
+        background: var(--paper);
+        color: var(--ink);
+        font: 15px/1.5 Charter, "Iowan Old Style", "Palatino Linotype", "Songti SC", serif;
+        display: flex;
+        justify-content: center;
+        padding: 40px 16px;
+      }
+      main {
+        width: min(560px, 100%);
+        border: 1px solid var(--line);
+        background: var(--paper);
+        box-shadow: 8px 8px 0 #0c0a07;
+        padding: 28px 28px 32px;
+        position: relative;
+      }
+      main:before {
+        content: ""; position: absolute; left: 0; right: 0; top: 0; height: 8px;
+        background: repeating-linear-gradient(90deg, #1a140c 0 10px, #c45c26 10px 20px, #1a140c 20px 30px, #2f6b3a 30px 40px);
+      }
+      .kicker { margin: 8px 0 0; font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
+      h1 { margin: 4px 0 4px; font-size: 24px; }
+      .sub { margin: 0 0 20px; color: var(--muted); font-size: 13px; }
+      label { display: block; margin: 14px 0 4px; font-weight: 700; font-size: 14px; }
+      .toggle { display: flex; align-items: center; gap: 8px; font-weight: 700; margin: 18px 0 6px; cursor: pointer; }
+      input[type="password"], input[type="text"], select {
+        width: 100%;
+        border: 1px solid var(--line);
+        background: var(--paper-2);
+        color: inherit;
+        font: inherit;
+        padding: 9px 10px;
+      }
+      .key-row { display: flex; gap: 8px; }
+      .key-row input { flex: 1; }
+      button {
+        font: inherit;
+        cursor: pointer;
+        border: 1px solid var(--line);
+        background: transparent;
+        color: inherit;
+        padding: 9px 14px;
+      }
+      button.primary { background: var(--ink); color: var(--paper); }
+      .row { display: flex; gap: 10px; margin-top: 20px; }
+      .hint { min-height: 20px; margin: 12px 0 0; font-size: 13px; color: var(--muted); }
+      .hint.ok { color: var(--green); }
+      .hint.err { color: var(--red); }
+      .note {
+        margin-top: 22px;
+        border: 1px dashed var(--line);
+        background: #efe0c4;
+        padding: 12px 14px;
+        font-size: 12px;
+        color: #4d3f2e;
+      }
+      .note p { margin: 0 0 8px; }
+      .note p:last-child { margin: 0; }
+      .note a { color: inherit; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="kicker">UTH 探针 · 设置</p>
+      <h1>AI 复核（DeepSeek）</h1>
+      <p class="sub">本地规则秒出结果；开启后再用 DeepSeek 做一层语义判定，识别讽刺、变体词、语境擦边。</p>
+
+      <label class="toggle"><input type="checkbox" id="enabled" /> 启用 AI 复核</label>
+
+      <label for="key">DeepSeek API Key</label>
+      <div class="key-row">
+        <input type="password" id="key" placeholder="sk-…" autocomplete="off" />
+        <button type="button" id="show">显示</button>
+      </div>
+
+      <label for="model">模型</label>
+      <select id="model">
+        <option value="deepseek-v4-flash">deepseek-v4-flash · 快、便宜（推荐）</option>
+        <option value="deepseek-v4-pro">deepseek-v4-pro · 旗舰，更强更贵</option>
+      </select>
+
+      <div class="row">
+        <button type="button" id="save" class="primary">保存</button>
+        <button type="button" id="test">测试连接</button>
+      </div>
+      <p id="status" class="hint"></p>
+
+      <div class="note">
+        <p>Key 只保存在这台电脑的浏览器本地（chrome.storage.local），插件不会把它发给 DeepSeek 之外的任何服务。</p>
+        <p>启用后，被分析帖子的<strong>文本和链接</strong>会发送到 api.deepseek.com 用于判定；不想发送就关掉开关，插件回到纯本地规则模式。</p>
+        <p>还没有 Key？去 <a href="https://platform.deepseek.com" target="_blank" rel="noreferrer">platform.deepseek.com</a> 注册并创建一个。单条判定成本约 ¥0.001。</p>
+      </div>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

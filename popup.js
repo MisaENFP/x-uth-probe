@@ -3,6 +3,7 @@ const state = {
   tab: "safety",
   tweet: blankTweet(),
   opts: { mutualOriginal: false, oon: false },
+  ai: { status: "idle", forText: "" },
 };
 
 function blankTweet() {
@@ -47,8 +48,80 @@ document.querySelectorAll("[data-tab]").forEach((btn) => {
 $("run").addEventListener("click", () => {
   state.tweet.text = $("text").value;
   state.tweet.urls = Array.from(String(state.tweet.text).matchAll(/https?:\/\/[^\s]+/g)).map((m) => m[0]);
+  requestAi();
   render();
 });
+
+$("settings").addEventListener("click", () => {
+  chrome.runtime.openOptionsPage();
+});
+
+function requestAi() {
+  const tweet = state.tweet;
+  const text = String(tweet.text || "");
+  if (!text.trim()) return;
+  if (state.ai.forText === text && state.ai.status !== "off" && state.ai.status !== "error") return;
+  state.ai = { status: "loading", forText: text };
+  chrome.runtime.sendMessage(
+    {
+      type: "UTH_AI_ANALYZE",
+      tweet: {
+        text: tweet.text,
+        urls: tweet.urls,
+        hasPhoto: tweet.hasPhoto,
+        hasVideo: tweet.hasVideo,
+        hasGif: tweet.hasGif,
+        hasCard: tweet.hasCard,
+      },
+    },
+    (res) => {
+      if (state.ai.forText !== text) return;
+      if (chrome.runtime.lastError) {
+        state.ai = { status: "error", forText: text, error: chrome.runtime.lastError.message };
+      } else if (res && res.ok) {
+        state.ai = { status: "done", forText: text, ai: res.ai };
+      } else if (res && res.off) {
+        state.ai = { status: "off", forText: text };
+      } else {
+        state.ai = { status: "error", forText: text, error: (res && res.error) || "未知错误" };
+      }
+      render();
+    }
+  );
+}
+
+function aiRowHtml() {
+  const a = state.ai;
+  const current = a.forText === String(state.tweet.text || "");
+  if (!current || a.status === "idle" || a.status === "off") {
+    return `<p class="ai-row">AI 复核未启用 · <a href="#" id="ai-settings">绑定 DeepSeek API</a></p>`;
+  }
+  if (a.status === "loading") return `<p class="ai-row">DeepSeek 语义复核中…</p>`;
+  if (a.status === "error") {
+    return `<p class="ai-row err">AI 复核失败：${esc(a.error || "")} · <a href="#" id="ai-retry">重试</a></p>`;
+  }
+  const note = a.ai && a.ai.note ? "：" + esc(a.ai.note) : "";
+  return `<p class="ai-row ok">DeepSeek 复核完成${note}</p>`;
+}
+
+function bindAiRow() {
+  const settings = document.getElementById("ai-settings");
+  if (settings) {
+    settings.addEventListener("click", (e) => {
+      e.preventDefault();
+      chrome.runtime.openOptionsPage();
+    });
+  }
+  const retry = document.getElementById("ai-retry");
+  if (retry) {
+    retry.addEventListener("click", (e) => {
+      e.preventDefault();
+      state.ai = { status: "idle", forText: "" };
+      requestAi();
+      render();
+    });
+  }
+}
 
 $("read").addEventListener("click", async () => {
   $("source").textContent = "正在读取…";
@@ -65,6 +138,7 @@ $("read").addEventListener("click", async () => {
     $("source").textContent = state.tweet.handle
       ? `已读取 @${state.tweet.handle} · ${state.tweet.id || "无 ID"}`
       : "已读取当前帖";
+    requestAi();
     render();
   } catch (err) {
     $("source").textContent = err.message || String(err);
@@ -140,7 +214,8 @@ function bindDownload(tweet, safety, score, advice) {
 function render() {
   const tweet = state.tweet;
   const out = $("out");
-  const safety = UTH.analyzeSafety(tweet);
+  const aiDone = state.ai.status === "done" && state.ai.forText === String(tweet.text || "");
+  const safety = UTH.mergeSafety(UTH.analyzeSafety(tweet), aiDone ? state.ai.ai : null);
   const score = UTH.estimateScore(tweet, state.opts);
   const advice = UTH.advise(tweet, safety, score);
 
@@ -152,25 +227,35 @@ function render() {
     if (safety.status === "clear") {
       out.innerHTML =
         identityBlock(tweet) +
-        `<div class="stamp stamp-clear">CLEAR</div>
-        <div class="clear-block">
-          <h2>未命中公开标签规则</h2>
-          <p class="muted">启发式对照 UTH 白名单。绿色不等于 X 没打标，只表示这套公开规则没扫到明显信号。</p>
+        `<div class="stamp stamp-clear">CLEAR</div>` +
+        aiRowHtml() +
+        `<div class="clear-block">
+          <h2>${aiDone ? "规则与 AI 复核均未命中" : "未命中公开标签规则"}</h2>
+          <p class="muted">${
+            aiDone
+              ? "本地规则和 DeepSeek 语义判定都没扫到明显信号。绿色不等于 X 没打标，仅供参考。"
+              : "启发式对照 UTH 白名单。绿色不等于 X 没打标，只表示这套公开规则没扫到明显信号。"
+          }</p>
         </div>` +
         downloadBtn();
+      bindAiRow();
       bindDownload(tweet, safety, score, advice);
       return;
     }
     const stamp = safety.status === "alert" ? "HOLD" : "FLAG";
     const cls = safety.status === "alert" ? "alert" : "warn";
+    const srcPill = (m) =>
+      m.src === "ai" ? `<span class="pill src-ai">AI</span>` : m.src === "both" ? `<span class="pill src-ai">规则+AI</span>` : "";
     out.innerHTML =
       identityBlock(tweet) +
       `<div class="stamp stamp-${cls}">${stamp}</div>` +
+      aiRowHtml() +
       safety.matches
         .map(
           (m) => `<article class="label-card ${m.level}">
             <header>
               <span class="pill">${m.kill === "all" ? "整站" : "非粉 For You"}</span>
+              ${srcPill(m)}
               <code>${esc(m.id)}</code>
             </header>
             <p class="reason">${esc(m.reason)}</p>
@@ -179,6 +264,7 @@ function render() {
         )
         .join("") +
       downloadBtn();
+    bindAiRow();
     bindDownload(tweet, safety, score, advice);
     return;
   }
